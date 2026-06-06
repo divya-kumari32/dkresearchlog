@@ -160,14 +160,6 @@
   </div>
 </div>
 
-<!-- BLOG POST VIEW -->
-<div id="page-post" class="page">
-  <div class="post-view">
-    <button class="post-back" id="post-back">← all posts</button>
-    <div id="post-content"></div>
-  </div>
-</div>
-
 <!-- PROJECTS -->
 <div id="page-projects" class="page">
   <div class="projects-wrap">
@@ -219,9 +211,9 @@
 <div id="page-about" class="page">
   <div class="about-wrap">
     <h1>About</h1>
-    <p>I'm a Research Engineer at IBM Research, where I build and train large reasoning models. My work spans pretraining, post-training alignment, and agentic systems.</p>
-    <p>Currently I'm building an agentic browser pipeline for RL rollout generation across multiple real-world environments (Gmail, Slack, Notion, etc.) — enabling trajectory generation at scale for RL training.</p>
-    <p>Previously I contributed to <strong>Bamba</strong> — a hybrid Mamba2-Attention architecture pretrained on ~2.2T tokens, adopted as IBM's Granite 4 flagship, and led the post-training pipeline for a 70B+ reasoning model, covering multi-round iterative SFT and GRPO-based RL across increasing context phases.</p>
+    <p>I'm a Research Engineer at IBM Research, where I build training infrastructure for large language models. My work spans pretraining, post-training alignment, and agentic systems.</p>
+    <p>Currently I'm building an agentic browser pipeline for RL rollout generation across 23 real-world environments (Gmail, Slack, Notion, etc.) — enabling trajectory generation at scale for RL training.</p>
+    <p>Previously I contributed to <strong>Bamba</strong> — a hybrid Mamba2-Attention architecture pretrained on ~2.2T tokens, adopted as IBM's Granite 4 flagship — and led the post-training pipeline for a 70B+ reasoning model, covering 4-round iterative SFT and GRPO-based RL across 8K→32K→64K context phases.</p>
 
     <h2>Experience</h2>
     <div class="timeline">
@@ -282,33 +274,33 @@
 const posts = [
   {
     id: 'trajectory-quality',
+    url: '/posts/trajectory-quality.html',
     series: 'SFT Data',
     title: 'What makes a good training trajectory?',
     date: 'Jun 2026',
     dateShort: 'Jun 26',
     excerpt: 'Most practitioners treat trajectory quality as an afterthought. After building pipelines that generated millions of rollouts at IBM Research, here is what I actually learned about what separates signal from noise.',
     tags: ['RL training', 'SFT', 'data quality'],
-    body: '<div class="coming-soon">✦ This post is being drafted.<br>Check back soon.</div>'
   },
   {
     id: 'bamba-pretraining',
+    url: '/posts/bamba.html',
     series: 'Pretraining',
     title: 'Bamba: lessons from hybrid architecture pretraining at scale',
-    date: 'May 2026',
-    dateShort: 'May 26',
+    date: '2024',
+    dateShort: '2024',
     excerpt: 'What we learned pretraining a hybrid Mamba2-Attention model on 2.2T tokens — the architectural tradeoffs, the training instabilities, and why it became IBM\'s Granite 4 flagship.',
     tags: ['pretraining', 'Mamba', 'hybrid architecture'],
-    body: '<div class="coming-soon">✦ Coming soon.</div>'
   },
   {
     id: 'posttraining-70b',
+    url: '/posts/posttraining-70b.html',
     series: 'Post-training',
     title: 'Post-training a 70B reasoning model: SFT, GRPO, and what actually moved the needle',
     date: 'Apr 2026',
     dateShort: 'Apr 26',
     excerpt: 'A practical account of the 4-round iterative SFT loop, context extension from 8K to 64K, and the GRPO-based RL phase — with honest notes on what worked and what didn\'t.',
     tags: ['post-training', 'GRPO', 'RL', 'context length'],
-    body: '<div class="coming-soon">✦ Coming soon.</div>'
   }
 ];
 
@@ -324,28 +316,15 @@ function renderPostItem(post) {
       <div class="post-tags">${post.tags.map(t => `<span class="post-tag">${t}</span>`).join('')}</div>
     </div>
   `;
-  el.addEventListener('click', () => showPost(post));
+  el.addEventListener('click', () => window.location.href = post.url);
   return el;
-}
-
-function showPost(post) {
-  document.getElementById('post-content').innerHTML = `
-    <div class="post-view-series">${post.series}</div>
-    <h1 class="post-view-title">${post.title}</h1>
-    <div class="post-view-meta">
-      <span>${post.date}</span>
-      <span>IBM Research</span>
-    </div>
-    <div class="post-view-body">${post.body}</div>
-  `;
-  navigate('post');
 }
 
 function navigate(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('visible'));
   document.querySelectorAll('.nav-link').forEach(a => a.classList.remove('active'));
   document.getElementById('page-' + pageId).classList.add('visible');
-  const activeLink = document.querySelector('.nav-link[data-page="' + (pageId === 'post' ? 'blog' : pageId) + '"]');
+  const activeLink = document.querySelector('.nav-link[data-page="' + pageId + '"]');
   if (activeLink) activeLink.classList.add('active');
 }
 
@@ -355,8 +334,6 @@ document.querySelectorAll('.nav-link').forEach(link => {
     navigate(link.dataset.page);
   });
 });
-
-document.getElementById('post-back').addEventListener('click', () => navigate('blog'));
 
 const homeList = document.getElementById('home-post-list');
 const fullList = document.getElementById('full-post-list');

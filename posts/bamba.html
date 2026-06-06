@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bamba: lessons from hybrid architecture pretraining at scale — DK Research Log</title>
+<meta name="description" content="What we learned pretraining a hybrid Mamba2-Attention model on 2.2T tokens.">
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --ink: #1a1814; --ink-2: #4a4740; --ink-3: #8a8680;
+    --cream: #f7f4ee; --cream-2: #ede9e0; --cream-3: #e0dbd0;
+    --accent: #7a5c3a; --accent-light: #c4a882; --rule: #ccc8be;
+    --serif: 'Lora', Georgia, serif; --sans: 'DM Sans', sans-serif; --mono: 'IBM Plex Mono', monospace;
+  }
+  body { background: var(--cream); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.7; min-height: 100vh; }
+  nav { position: sticky; top: 0; z-index: 10; background: var(--cream); border-bottom: 1px solid var(--rule); padding: 0 2.5rem; display: flex; align-items: center; justify-content: space-between; height: 56px; }
+  .nav-name { font-family: var(--serif); font-size: 17px; font-weight: 500; letter-spacing: 0.01em; color: var(--ink); text-decoration: none; }
+  .nav-links { display: flex; gap: 2rem; list-style: none; }
+  .nav-links a { font-size: 13px; color: var(--ink-2); text-decoration: none; letter-spacing: 0.04em; text-transform: uppercase; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--accent); }
+  .post-view { max-width: 680px; margin: 0 auto; padding: 3rem 2.5rem 6rem; animation: fadeUp 0.4s ease both; }
+  .post-back { font-family: var(--mono); font-size: 12px; color: var(--ink-3); display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 2.5rem; transition: color 0.2s; text-decoration: none; }
+  .post-back:hover { color: var(--accent); }
+  .post-series { font-family: var(--mono); font-size: 11px; color: var(--accent); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 0.5rem; }
+  .post-title { font-family: var(--serif); font-size: 2.1rem; font-weight: 400; line-height: 1.25; color: var(--ink); margin-bottom: 1rem; }
+  .post-meta { display: flex; gap: 1.5rem; font-family: var(--mono); font-size: 12px; color: var(--ink-3); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); padding: 0.75rem 0; margin-bottom: 2.5rem; }
+  .post-body { font-size: 15.5px; color: var(--ink-2); line-height: 1.85; }
+  .post-body h2 { font-family: var(--serif); font-size: 1.35rem; font-weight: 500; color: var(--ink); margin: 2.5rem 0 0.75rem; }
+  .post-body p { margin-bottom: 1.25rem; }
+  .post-body em { font-style: italic; }
+  .post-body a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-light); }
+  .post-body a:hover { border-color: var(--accent); }
+  .post-body code { font-family: var(--mono); font-size: 13px; background: var(--cream-2); padding: 2px 6px; border-radius: 2px; color: var(--accent); }
+  .graph-wrap { margin: 2rem 0; background: var(--cream-2); border: 1px solid var(--rule); border-radius: 4px; padding: 1.5rem; }
+  .graph-caption { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-align: center; margin-top: 0.75rem; letter-spacing: 0.04em; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+<nav>
+  <a href="/" class="nav-name">DK Research Log</a>
+  <ul class="nav-links">
+    <li><a href="/">Home</a></li>
+    <li><a href="/">Writing</a></li>
+    <li><a href="/">Projects</a></li>
+    <li><a href="/">About</a></li>
+  </ul>
+</nav>
+<div class="post-view">
+  <a href="/" class="post-back">← all posts</a>
+  <div class="post-series">Pretraining</div>
+  <h1 class="post-title">Bamba: lessons from hybrid architecture pretraining at scale</h1>
+  <div class="post-meta">
+    <span>2025</span>
+    <span>IBM Research</span>
+    <span>Divya Kumari</span>
+  </div>
+  <div class="post-body">
+
+    <p>In 2024, our team at IBM Research released Bamba-9B, a hybrid Mamba2-Attention model pretrained on 2.2T tokens that matched Meta Llama 3.1 8B on most benchmarks despite training on 7x fewer tokens. The <a href="https://huggingface.co/blog/bamba" target="_blank">HuggingFace blog</a> covers what we built. This post is about what we learned building it.</p>
+
+    <p>Three things stood out that did not make it fully into the writeup: how the learning rate schedule shapes your ability to experiment, how much the annealing data mix moves the needle, and why a stateful data loader is less optional than it sounds.</p>
+
+    <h2>Learning rate schedules: why WSD beats cosine</h2>
+
+    <p>To understand this, it helps to first understand what "annealing" actually means here, as the term gets used in two related ways.</p>
+
+    <p>When you train a neural network, you control how big each learning step is via the learning rate. A high learning rate means the model makes big, exploratory updates. A low one means small, careful refinements. <em>Learning rate annealing</em> is simply the process of gradually turning that dial down toward the end of training, shifting the model from exploring to settling.</p>
+
+    <p><em>Data annealing</em> is the practice of also switching to higher-quality, more curated data during that same window. The intuition is straightforward: when the model is making its final, most careful updates, you want it looking at the best material available. Feeding it noisy or low-quality data at this stage is like cramming with bad notes the night before an exam. The effort is there but the input is not.</p>
+
+    <p>The most common approach is a cosine learning rate schedule, where the LR follows a smooth curve from high to low over the entire training run. It works reasonably well, but it has one practical limitation: the decay is locked in from the beginning. If you want to continue training on new data, or test different data mixes during annealing, you have to restart the whole training from scratch.</p>
+
+    <p>WSD, which stands for warmup-stable-decay, solves this by separating the phases explicitly. You warm up, hold at a constant learning rate for as long as you need, then anneal deliberately when you are ready. This means you can branch off from the stable phase to try different annealing data mixes without redoing the expensive early training each time.</p>
+
+    <p>As for the decay shape itself, cosine vs linear, we found it made minimal difference to the final results. What actually moved the needle was the data you annealed on, not the exact curve of the decay. WSD's real value is the stable middle phase: it gives you a clean, reusable checkpoint to experiment from.</p>
+
+    <div class="graph-wrap">
+      <svg viewBox="0 0 580 230" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">
+        <defs>
+          <style>
+            .ax { stroke: #8a8680; stroke-width: 1; }
+            .gl { font-family: 'IBM Plex Mono', monospace; font-size: 10px; fill: #4a4740; }
+            .gt { font-family: 'IBM Plex Mono', monospace; font-size: 10px; fill: #7a5c3a; font-weight: 500; letter-spacing: 0.05em; }
+            .ph { stroke: #ccc8be; stroke-width: 1; stroke-dasharray: 3,3; }
+            .pl { font-family: 'IBM Plex Mono', monospace; font-size: 9px; fill: #8a8680; }
+          </style>
+        </defs>
+
+        <!-- ── COSINE LR + LINEAR ANNEAL ── -->
+        <text x="140" y="14" class="gt" text-anchor="middle">COSINE LR + LINEAR ANNEAL</text>
+        <line x1="32" y1="175" x2="262" y2="175" class="ax"/>
+        <line x1="32" y1="28" x2="32" y2="175" class="ax"/>
+        <text x="147" y="192" class="gl" text-anchor="middle">training steps →</text>
+        <text x="14" y="105" class="gl" text-anchor="middle" transform="rotate(-90,14,105)">LR</text>
+        <!-- warmup: short ramp -->
+        <line x1="32" y1="168" x2="52" y2="38" stroke="#c4a882" stroke-width="2.5"/>
+        <!-- cosine decay: smooth curve from peak down -->
+        <path d="M52,38 C80,38 100,50 125,90 C148,128 165,160 200,170" fill="none" stroke="#c4a882" stroke-width="2.5"/>
+        <!-- linear anneal: drop to zero -->
+        <line x1="200" y1="170" x2="258" y2="173" stroke="#c4a882" stroke-width="2.5"/>
+        <!-- phase dividers -->
+        <line x1="52" y1="28" x2="52" y2="175" class="ph"/>
+        <line x1="200" y1="28" x2="200" y2="175" class="ph"/>
+        <text x="33" y="207" class="pl">warmup</text>
+        <text x="90" y="207" class="pl">cosine decay</text>
+        <text x="202" y="207" class="pl">linear anneal</text>
+
+        <!-- ── WSD ── -->
+        <text x="430" y="14" class="gt" text-anchor="middle">WSD</text>
+        <line x1="318" y1="175" x2="568" y2="175" class="ax"/>
+        <line x1="318" y1="28" x2="318" y2="175" class="ax"/>
+        <text x="443" y="192" class="gl" text-anchor="middle">training steps →</text>
+        <text x="300" y="105" class="gl" text-anchor="middle" transform="rotate(-90,300,105)">LR</text>
+        <!-- warmup: short steep ramp -->
+        <line x1="318" y1="168" x2="338" y2="38" stroke="#7a5c3a" stroke-width="2.5"/>
+        <!-- stable: long flat -->
+        <line x1="338" y1="38" x2="488" y2="38" stroke="#7a5c3a" stroke-width="2.5"/>
+        <!-- linear decay to zero -->
+        <line x1="488" y1="38" x2="563" y2="172" stroke="#7a5c3a" stroke-width="2.5"/>
+        <!-- phase dividers -->
+        <line x1="338" y1="28" x2="338" y2="175" class="ph"/>
+        <line x1="488" y1="28" x2="488" y2="175" class="ph"/>
+        <text x="319" y="207" class="pl">warmup</text>
+        <text x="368" y="207" class="pl">stable (long)</text>
+        <text x="490" y="207" class="pl">anneal</text>
+        <!-- branch annotation -->
+        <line x1="413" y1="38" x2="413" y2="62" stroke="#c4a882" stroke-width="1.5" stroke-dasharray="2,2"/>
+        <polygon points="409,60 413,70 417,60" fill="#c4a882"/>
+        <text x="418" y="54" class="pl" style="fill:#7a5c3a;">branch to</text>
+        <text x="418" y="65" class="pl" style="fill:#7a5c3a;">experiment</text>
+      </svg>
+      <p class="graph-caption">Left: cosine LR decays continuously then ends with a short linear anneal — the decay shape is locked in from the start, leaving no clean point to branch from. Right: WSD holds a long stable phase at peak LR before annealing, giving you a reusable checkpoint to try different data mixes without rerunning early training.</p>
+    </div>
+
+    <h2>Why the annealing phase is where quality matters most</h2>
+
+    <p>The standard intuition about pretraining data is that more is better, and quality averages out at scale. That holds during the stable training phase. The model is absorbing broad patterns from a large, diverse corpus, and the signal from any single document is diluted across billions of updates.</p>
+
+    <p>The annealing phase is different. As the learning rate decays toward zero, the model's updates become smaller and more precise. It is not absorbing new capabilities anymore, it is consolidating. What you feed it during this phase has a disproportionate influence on where it lands. Noisy or mismatched data at this stage does not average out; it interferes.</p>
+
+    <p>For Bamba, we annealed on high-quality, education-focused web data: FineWeb-edu (scores &gt;= 4) and Cosmopedia. This helped meaningfully. What it did not include was enough high-quality math data, which is reflected in the benchmark gaps on GSM8K and MATH. Incorporating a stronger math data mix during annealing would likely have closed much of that gap.</p>
+
+    <h2>Continued pretraining only works if your infrastructure is restartable</h2>
+
+    <p>Pretraining Bamba took roughly 2-3 months on 192 A100 GPUs on IBM's Vela cluster. Over that period, we hit a total of three job interruptions, in the form of hardware failures and incorrect job configs.</p>
+
+    <p>Three interruptions might sound manageable. But every restart raises the same question: when you resume, where exactly do you pick up? If your data loader does not track state, you either re-sample data you have already seen, introducing repetition bias, or skip ahead arbitrarily, leaving gaps in corpus coverage. At 2T tokens with a 1.5M token global batch size, neither is acceptable.</p>
+
+    <p>The solution was a checkpointable stateful data loader built as part of <a href="https://github.com/foundation-model-stack/fms-fsdp" target="_blank">fms-fsdp</a>. The core idea is straightforward: the data loader saves its exact position alongside the model checkpoint. When training restarts, each worker knows precisely which document it was on and continues from there, rather than starting over. One additional concern is that training data stored on disk tends to be organized by topic or source, so reading files in strict order means the model trains on long runs of similar content back to back, which can skew its updates temporarily in that direction. The loader avoids this by drawing from a pool of documents and serving them in randomized order, ensuring consecutive training batches are topically diverse.</p>
+
+    <p>Think of it like a podcast app that syncs your position across devices. If your phone dies mid-episode, you pick up from the exact second on your laptop, no rewind, no skip. The stateful loader works the same way: when a job crashes and restarts, each worker resumes from exactly where it left off, with no documents replayed or skipped.</p>
+
+    <p>This makes continued pretraining and annealing genuinely composable. Each phase picks up cleanly where the last left off.</p>
+
+    <h2>So what does any of this have to do with Mamba?</h2>
+
+    <p>Reading back through this post, you might notice that everything discussed so far — annealing data quality, WSD schedules, stateful data loaders — applies equally to training a standard transformer. None of it is Mamba-specific. That is actually the point.</p>
+
+    <p>The reason Bamba exists is a fundamental bottleneck in transformer inference. When a transformer generates text, it needs to remember everything it has seen in the current context. It does this by storing a structure called the KV-cache, which holds a compressed representation of all previous tokens. The problem is that this cache grows linearly with context length, and reading from it becomes the main speed constraint during generation as contexts get longer.</p>
+
+    <p>Bamba takes a different approach by replacing most transformer layers with Mamba2 layers. Instead of attending back to all previous tokens, Mamba2 maintains a fixed-size recurrent state that gets updated as each new token is processed. The state size stays constant regardless of context length, which is what enables the inference efficiency gains. The hybrid design retains some attention layers alongside the Mamba2 layers, preserving attention's strength at in-context reasoning for tasks where looking back at specific tokens matters. The result in practice: 2.5x throughput improvement and 2x latency reduction compared to a standard transformer of similar size in vLLM.</p>
+
+    <p>What makes the pretraining story notable is that Bamba outperformed a similarly trained transformer model of the same size (8B parameters), using the same training playbook, with a more inference-efficient architecture underneath. The same WSD schedule, the same annealing approach, the same data loader infrastructure all transferred directly. The cost savings show up in both places: during training, because the architecture reaches the same benchmark performance with fewer tokens, and at serving time, because the fixed-size recurrent state eliminates the memory bottleneck that plagues transformers at long context. That combination is worth keeping in mind as hybrid and non-attention architectures become more common: the training intuitions built around transformers are more portable than they first appear.</p>
+
+  </div>
+</div>
+</body>
+</html>
