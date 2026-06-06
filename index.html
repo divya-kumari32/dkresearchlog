@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DK Research Log</title>
+<title>DK's Research Log</title>
 <meta name="description" content="On data, training, and what makes models work. Research Engineer at IBM Research.">
 <link rel="canonical" href="https://dkresearchlog.com">
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
@@ -99,7 +99,7 @@
 <body>
 
 <nav>
-  <span class="nav-name">DK Research Log</span>
+  <span class="nav-name">DK's Research Log</span>
   <ul class="nav-links">
     <li><a href="#" class="nav-link active" data-page="home">Home</a></li>
     <li><a href="#" class="nav-link" data-page="blog">Writing</a></li>
@@ -119,31 +119,15 @@
         <span class="tag">RL Training</span>
         <span class="tag">SFT Pipelines</span>
         <span class="tag">Agentic Environments</span>
-        <span class="tag">Hybrid Architectures</span>
+        <span class="tag">LLM Architecture</span>
       </div>
       <div class="hero-links">
         <a href="https://github.com/divya-kumari32" target="_blank">GitHub</a>
         <a href="https://linkedin.com/in/divya-kumari-b053a8114" target="_blank">LinkedIn</a>
-        <a href="#">CV ↗</a>
+        <a href="/assets/Divya_Kumari_Resume.pdf" target="_blank">CV ↗</a>
       </div>
     </div>
-    <div class="hero-avatar">[ photo ]</div>
-  </div>
-  <div class="affil-strip">
-    <div class="affil-inner">
-      <div class="affil-item">
-        <div class="affil-dot"></div>
-        <span class="affil-text"><strong>IBM Research</strong> · NY</span>
-      </div>
-      <div class="affil-item">
-        <div class="affil-dot"></div>
-        <span class="affil-text">Bamba · <strong>Granite 4</strong> flagship</span>
-      </div>
-      <div class="affil-item">
-        <div class="affil-dot"></div>
-        <span class="affil-text">70B+ post-training pipeline</span>
-      </div>
-    </div>
+    <img src="/assets/photo.jpg" alt="Divya Kumari" style="width:160px;height:200px;object-fit:cover;border:1px solid var(--rule);flex-shrink:0;" onerror="this.outerHTML='<div class=\'hero-avatar\'>[ photo ]</div>'">
   </div>
   <div class="home-writing">
     <div class="section-label">Recent writing</div>
@@ -273,34 +257,14 @@
 <script>
 const posts = [
   {
-    id: 'trajectory-quality',
-    url: '/posts/trajectory-quality.html',
-    series: 'SFT Data',
-    title: 'What makes a good training trajectory?',
-    date: 'Jun 2026',
-    dateShort: 'Jun 26',
-    excerpt: 'Most practitioners treat trajectory quality as an afterthought. After building pipelines that generated millions of rollouts at IBM Research, here is what I actually learned about what separates signal from noise.',
-    tags: ['RL training', 'SFT', 'data quality'],
-  },
-  {
     id: 'bamba-pretraining',
     url: '/posts/bamba.html',
     series: 'Pretraining',
     title: 'Bamba: lessons from hybrid architecture pretraining at scale',
-    date: '2024',
-    dateShort: '2024',
+    date: '2025',
+    dateShort: '2025',
     excerpt: 'What we learned pretraining a hybrid Mamba2-Attention model on 2.2T tokens — the architectural tradeoffs, the training instabilities, and why it became IBM\'s Granite 4 flagship.',
     tags: ['pretraining', 'Mamba', 'hybrid architecture'],
-  },
-  {
-    id: 'posttraining-70b',
-    url: '/posts/posttraining-70b.html',
-    series: 'Post-training',
-    title: 'Post-training a 70B reasoning model: SFT, GRPO, and what actually moved the needle',
-    date: 'Apr 2026',
-    dateShort: 'Apr 26',
-    excerpt: 'A practical account of the 4-round iterative SFT loop, context extension from 8K to 64K, and the GRPO-based RL phase — with honest notes on what worked and what didn\'t.',
-    tags: ['post-training', 'GRPO', 'RL', 'context length'],
   }
 ];
 
